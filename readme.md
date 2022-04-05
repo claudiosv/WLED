@@ -1,7 +1,9 @@
 # Welcome to TechnoGecko WLED! ✨
 
 A fast and feature-rich implementation of an ESP32 webserver to control WS2812B LEDs. This repo has two branches:
+
 `main` which tracks upstream Aircookie's main branch (their dev branch)
+
 `soundreactive-dev` which tracks upstream atuline's development branch
 
 SoundReactive forked off from WLED quite a while ago, and does not really track upstream very closely. As a result, the featureset has diverged. However, there is a good reason to use the SoundReactive fork: it has pretty much every feature we care about from WLED, and most importantly it supports *matrices*. Standard WLED has no concept of a 2D effect, only 1D effects. For example, with 2D effects you can have flames rising from the bottom of the vest. 1D effects can't do that. However, TechnoGecko vests, while being a single strand in software, are arranged in hardware to look like a matrix. The original unisparks/tgvest software is written with 2D effects only. The second reason to use the SoundReactive fork, is that if you hook up a microphone to your vest, it can produce sound reactive effects *locally*, on device, *without* network. This is impressive considering how much processing power near-realtime audio processing requires.
