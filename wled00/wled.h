@@ -315,6 +315,8 @@ WLED_GLOBAL byte col[]    _INIT_N(({ 255, 160, 0, 0 }));  // current RGB(W) prim
 WLED_GLOBAL byte colSec[] _INIT_N(({ 0, 0, 0, 0 }));      // current RGB(W) secondary color
 WLED_GLOBAL byte briS     _INIT(128);                     // default brightness
 
+//WLEDSR
+WLED_GLOBAL byte inputLevelS    _INIT(128);         // WLEDSR default inputLevel
 WLED_GLOBAL byte soundSquelch   _INIT(10);          // default squelch value for volume reactive routines
 WLED_GLOBAL byte sampleGain     _INIT(1);           // default sample gain
 WLED_GLOBAL byte soundAgc       _INIT(0);           // default Automagic gain control
@@ -496,6 +498,9 @@ WLED_GLOBAL byte briT _INIT(0);
 WLED_GLOBAL byte briIT _INIT(0);
 WLED_GLOBAL byte briLast _INIT(128);          // brightness before turned off. Used for toggle function
 WLED_GLOBAL byte whiteLast _INIT(128);        // white channel before turned off. Used for toggle function
+
+// WLEDSR
+WLED_GLOBAL byte inputLevel _INIT(inputLevelS);          // inputLevel (set by sliderinputLevel)
 
 // button
 WLED_GLOBAL bool buttonPublishMqtt                            _INIT(false);
