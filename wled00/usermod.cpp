@@ -84,7 +84,7 @@ void userLoop() {
     agcAvg();                           // Calculated the PI adjusted value as sampleAvg
     myVals[millis()%32] = sampleAgc;
 #if defined(MIC_LOGGER) || defined(MIC_SAMPLING_LOG) || defined(FFT_SAMPLING_LOG)
-    EVERY_N_MILLIS(20) {
+    EVERY_N_MILLIS(2000) {
       logAudio();
     }
 #endif

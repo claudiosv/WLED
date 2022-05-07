@@ -102,8 +102,8 @@ public:
             .mode = i2s_mode_t(I2S_MODE_MASTER | I2S_MODE_RX),
             .sample_rate = _sampleRate,
             .bits_per_sample = I2S_SAMPLE_RESOLUTION,
-            .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
-            .communication_format = i2s_comm_format_t(I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB),
+            .channel_format = I2S_CHANNEL_FMT_ONLY_RIGHT,
+            .communication_format = I2S_COMM_FORMAT_I2S,
             .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
             .dma_buf_count = 8,
             .dma_buf_len = _blockSize
@@ -122,13 +122,19 @@ public:
 
     virtual void initialize() {
 
-        if (!pinManager.allocatePin(i2swsPin, true, PinOwner::DigitalMic) ||
-            !pinManager.allocatePin(i2ssdPin, true, PinOwner::DigitalMic)) {
+        if (!pinManager.allocatePin(i2swsPin, true, PinOwner::DigitalMic)) {
+                Serial.printf("Failed to allocate i2swsPin PIN!! %d", i2swsPin);
+                return;
+        }
+
+        if (!pinManager.allocatePin(i2ssdPin, false, PinOwner::DigitalMic)) {
+                Serial.printf("Failed to allocate i2ssdPin PIN!! %d", i2ssdPin);
                 return;
         }
 
         // i2ssckPin needs special treatment, since it might be unused on PDM mics
         if (i2sckPin != -1) {
+            Serial.printf("SCK PIN WEIRD");
             if (!pinManager.allocatePin(i2sckPin, true, PinOwner::DigitalMic))
                 return;
         }
