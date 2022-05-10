@@ -49,7 +49,7 @@ constexpr int SAMPLE_RATE = 10240;      // Base sample rate in Hz
 //Use userVar0 and userVar1 (API calls &U0=,&U1=, uint16_t)
 
 #ifndef LED_BUILTIN     // Set LED_BUILTIN if it is not defined by Arduino framework
-  #define LED_BUILTIN 3
+  #define LED_BUILTIN 10
 #endif
 
 #define UDP_SYNC_HEADER "00001"
@@ -232,7 +232,7 @@ void getSample() {
 
 /*
  * A "PI control" multiplier to automatically adjust sound sensitivity.
- * 
+ *
  * A few tricks are implemented so that sampleAgc does't only utilize 0% and 100%:
  * 0. don't amplify anything below squelch (but keep previous gain)
  * 1. gain input = maximum signal observed in the last 5-10 seconds
@@ -280,7 +280,7 @@ void agcAvg() {
     if ((multAgcTemp > 0.085) && (multAgcTemp < 6.5))        //integrator anti-windup by clamping
       control_integrated += control_error * 0.002 * 0.25;    // 2ms = intgration time; 0.25 for damping
 
-    // apply PI Control 
+    // apply PI Control
     tmpAgc = sampleReal * lastMultAgc;              // check "zone" of the signal using previous gain
     if ((tmpAgc > AGC_HIGH) || (tmpAgc < soundSquelch + AGC_LOW)) {                  // upper/lower emergy zone
       multAgcTemp = lastMultAgc + AGC_FOLLOW_FAST * AGC_control_Kp * control_error;
