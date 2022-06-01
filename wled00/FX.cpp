@@ -4269,7 +4269,9 @@ extern int sample;
 extern float sampleAvg;
 extern bool samplePeak;
 extern uint8_t myVals[32];
-extern int sampleAgc;
+//extern int sampleAgc;
+extern int rawSampleAgc;
+extern float sampleAgc;
 extern uint8_t squelch;
 extern byte soundSquelch;
 extern byte soundAgc;
@@ -5458,7 +5460,7 @@ uint16_t WS2812FX::mode_2DSwirl(void) {             // By: Mark Kriegsman https:
   uint8_t nj = (SEGMENT.width - 1) - j;
   uint16_t ms = millis();
 
-  uint8_t tmpSound = (soundAgc) ? sampleAgc : sample;
+  int tmpSound = (soundAgc) ? rawSampleAgc : sample;
 
   leds[XY( i, j)]  += ColorFromPalette(currentPalette, (ms / 11 + sampleAvg*4), tmpSound * SEGMENT.intensity / 64, LINEARBLEND); //CHSV( ms / 11, 200, 255);
   leds[XY( j, i)]  += ColorFromPalette(currentPalette, (ms / 13 + sampleAvg*4), tmpSound * SEGMENT.intensity / 64, LINEARBLEND); //CHSV( ms / 13, 200, 255);
@@ -5510,7 +5512,7 @@ uint16_t WS2812FX::mode_2DWaverly(void) {                                       
   //  byte thisVal = inoise8(i * 45 , t , t);
   // byte thisMax = map(thisVal, 0, 255, 0, SEGMENT.height);
 
-    uint8_t tmpSound = (soundAgc) ? sampleAgc : sampleAvg;
+    int tmpSound = (soundAgc) ? sampleAgc : sampleAvg;
 
     uint16_t thisVal = tmpSound*SEGMENT.intensity/64 * inoise8(i * 45 , t , t)/64;
     uint16_t thisMax = map(thisVal, 0, 512, 0, SEGMENT.height);
@@ -5624,7 +5626,7 @@ uint16_t WS2812FX::mode_gravcentric(void) {                     // Gravcentric. 
 ///////////////////////
 //   * GRAVIMETER    //
 ///////////////////////
-
+#ifndef SR_DEBUG_AGC
 uint16_t WS2812FX::mode_gravimeter(void) {                // Gravmeter. By Andrew Tuline.
 
   uint16_t dataSize = sizeof(gravity);
@@ -5659,6 +5661,57 @@ uint16_t WS2812FX::mode_gravimeter(void) {                // Gravmeter. By Andre
   return FRAMETIME;
 } // mode_gravimeter()
 
+#else
+// This an abuse of the gravimeter effect for AGC debugging
+// instead of sound volume, it uses the AGC gain multiplier as input
+uint16_t WS2812FX::mode_gravimeter(void) {                // Gravmeter. By Andrew Tuline.
+
+  uint16_t dataSize = sizeof(gravity);
+  if (!SEGENV.allocateData(dataSize)) return mode_static(); //allocation failed
+  Gravity* gravcen = reinterpret_cast<Gravity*>(SEGENV.data);
+
+  fade_out(240);
+
+  float tmpSound = multAgc;                                                         // AGC gain
+  if (soundAgc == 0) {
+    if ((sampleAvg> 1.0) && (sampleReal > 0.05))
+      tmpSound = (float)sample / sampleReal;                                        // current non-AGC gain
+    else 
+      tmpSound = ((float)sampleGain/40.0 * (float)inputLevel/128.0) + 1.0/16.0;     // non-AGC gain from presets
+  }
+
+  if (tmpSound > 2) tmpSound = ((tmpSound -2.0) / 2) +2;  //compress ranges > 2
+  if (tmpSound > 1) tmpSound = ((tmpSound -1.0) / 2) +1;  //compress ranges > 1
+
+  float segmentSampleAvg = 64.0 * tmpSound * (float)SEGMENT.intensity / 128.0;
+  float mySampleAvg = mapf(segmentSampleAvg, 0, 128, 0, (SEGLEN-1)); // map to pixels availeable in current segment 
+  int tempsamp = constrain(mySampleAvg,0,SEGLEN-1);                  // Keep the sample from overflowing.
+
+  //tempsamp = SEGLEN - tempsamp;                                      // uncomment to invert direction
+  segmentSampleAvg=fmax(64.0 - fmin(segmentSampleAvg,63),8);         // inverted brightness
+
+  uint8_t gravity = 8 - SEGMENT.speed/32;
+
+  if (sampleAvg > 1)                                                 // disable bar "body" if below squelch
+  {
+    for (int i=0; i<tempsamp; i++) {
+      uint8_t index = inoise8(i*segmentSampleAvg+millis(), 5000+i*segmentSampleAvg);
+      setPixelColor(i, color_blend(SEGCOLOR(1), color_from_palette(index, false, PALETTE_SOLID_WRAP, 0), segmentSampleAvg*4.0));
+    }
+  }
+  if (tempsamp >= gravcen->topLED)
+    gravcen->topLED = tempsamp;
+  else if (gravcen->gravityCounter % gravity == 0)
+    gravcen->topLED--;
+
+  if (gravcen->topLED > 0) {
+    setPixelColor(gravcen->topLED, color_from_palette(millis(), false, PALETTE_SOLID_WRAP, 0));
+  }
+  gravcen->gravityCounter = (gravcen->gravityCounter + 1) % gravity;
+
+  return FRAMETIME;
+} // mode_gravimeter()
+#endif
 
 //////////////////////
 //   * JUGGLES      //
@@ -5667,7 +5720,7 @@ uint16_t WS2812FX::mode_gravimeter(void) {                // Gravmeter. By Andre
 uint16_t WS2812FX::mode_juggles(void) {                   // Juggles. By Andrew Tuline.
 
   fade_out(224);
-  int my_sampleAgc = max(min(sampleAgc, 255), 0);
+  int my_sampleAgc = fmax(fmin(sampleAgc, 255.0), 0);
 
   for (int i=0; i<SEGMENT.intensity/32+1; i++) {
           setPixelColor(beatsin16(SEGMENT.speed/4+i*2,0,SEGLEN-1), color_blend(SEGCOLOR(1), color_from_palette(millis()/4+i*2, false, PALETTE_SOLID_WRAP, 0), my_sampleAgc));
@@ -5687,7 +5740,7 @@ uint16_t WS2812FX::mode_matripix(void) {                  // Matripix. By Andrew
   uint8_t secondHand = micros()/(256-SEGMENT.speed)/500 % 16;
   if(SEGENV.aux0 != secondHand) {
     SEGENV.aux0 = secondHand;
-    uint8_t tmpSound = (soundAgc) ? sampleAgc : sample;
+    uint8_t tmpSound = (soundAgc) ? rawSampleAgc : sample;
     int pixBri = tmpSound * SEGMENT.intensity / 64;
     leds[realPixelIndex(SEGLEN-1)] = color_blend(SEGCOLOR(1), color_from_palette(millis(), false, PALETTE_SOLID_WRAP, 0), pixBri);
     for (int i=0; i<SEGLEN-1; i++) leds[realPixelIndex(i)] = leds[realPixelIndex(i+1)];
@@ -5709,10 +5762,11 @@ uint16_t WS2812FX::mode_midnoise(void) {                  // Midnoise. By Andrew
   fade_out(SEGMENT.speed);
   fade_out(SEGMENT.speed);
 
-  int tmpSound = (soundAgc) ? sampleAgc : sampleAvg;
+  float tmpSound = (soundAgc) ? sampleAgc : sampleAvg;
+  float tmpSound2 = tmpSound * (float)SEGMENT.intensity / 256.0;  // Too sensitive.
+  tmpSound2 *= (float)SEGMENT.intensity / 128.0;              // Reduce sensitity/length.
 
-  int maxLen = tmpSound * SEGMENT.intensity / 256;   // Too sensitive.
-  maxLen = maxLen * SEGMENT.intensity / 128;              // Reduce sensitity/length.
+  int maxLen = mapf(tmpSound2, 0, 127, 0, SEGLEN/2);
   if (maxLen >SEGLEN/2) maxLen = SEGLEN/2;
 
   for (int i=(SEGLEN/2-maxLen); i<(SEGLEN/2+maxLen); i++) {
@@ -5764,14 +5818,14 @@ uint16_t WS2812FX::mode_noisemeter(void) {                // Noisemeter. By Andr
   uint8_t fadeRate = map(SEGMENT.speed,0,255,224,255);
   fade_out(fadeRate);
 
-  int maxLen = sample*8;
-
-  maxLen = maxLen * SEGMENT.intensity / 256;              // Still a bit too sensitive.
-
+  float tmpSound = (soundAgc) ? rawSampleAgc : sample;
+  float tmpSound2 = tmpSound * 2.0 * (float)SEGMENT.intensity / 255.0;
+  int maxLen = mapf(tmpSound2, 0, 255, 0, SEGLEN); // map to pixels availeable in current segment              // Still a bit too sensitive.
   if (maxLen >SEGLEN) maxLen = SEGLEN;
 
+  tmpSound = soundAgc ? sampleAgc : sampleAvg;                      // now use smoothed value (sampleAvg or sampleAgc)
   for (int i=0; i<maxLen; i++) {                                    // The louder the sound, the wider the soundbar. By Andrew Tuline.
-    uint8_t index = inoise8(i*sampleAvg+SEGENV.aux0, SEGENV.aux1+i*sampleAvg);  // Get a value from the noise function. I'm using both x and y axis.
+    uint8_t index = inoise8(i*tmpSound+SEGENV.aux0, SEGENV.aux1+i*tmpSound);  // Get a value from the noise function. I'm using both x and y axis.
     setPixelColor(i, color_from_palette(index, false, PALETTE_SOLID_WRAP, 0));
   }
 
@@ -5811,7 +5865,7 @@ uint16_t WS2812FX::mode_pixelwave(void) {                 // Pixelwave. By Andre
   if(SEGENV.aux0 != secondHand) {
     SEGENV.aux0 = secondHand;
 
-    uint8_t tmpSound = (soundAgc) ? sampleAgc : sample;
+    uint8_t tmpSound = (soundAgc) ? rawSampleAgc : sample;
     int pixBri = tmpSound * SEGMENT.intensity / 64;
     leds[realPixelIndex(SEGLEN/2)] = color_blend(SEGCOLOR(1), color_from_palette(millis(), false, PALETTE_SOLID_WRAP, 0), pixBri);
 
@@ -5849,12 +5903,13 @@ uint16_t WS2812FX::mode_plasmoid(void) {                  // Plasmoid. By Andrew
   plasmoip->thatphase += beatsin8(7,-4,4);                          // Two phase values to make a complex pattern. By Andrew Tuline.
 
   for (int i=0; i<SEGLEN; i++) {                          // For each of the LED's in the strand, set a brightness based on a wave as follows.
-    uint8_t thisbright = cubicwave8((i*13)+plasmoip->thisphase)/2;
-    thisbright += cos8((i*117)+plasmoip->thatphase)/2;              // Let's munge the brightness a bit and animate it all with the phases.
+    // updated, similar to "plasma" effect - softhack007
+    uint8_t thisbright = cubicwave8(((i*(1 + (3*SEGMENT.speed/32)))+plasmoip->thisphase) & 0xFF)/2;
+    thisbright += cos8(((i*(97 +(5*SEGMENT.speed/32)))+plasmoip->thatphase) & 0xFF)/2; // Let's munge the brightness a bit and animate it all with the phases.
+    
     uint8_t colorIndex=thisbright;
-
-    uint8_t tmpSound = (soundAgc) ? sampleAgc : sampleAvg;
-    if (tmpSound * SEGMENT.intensity / 32 < thisbright) {thisbright = 0;}
+    int tmpSound = (soundAgc) ? sampleAgc : sampleAvg;
+    if (tmpSound * SEGMENT.intensity / 64 < thisbright) {thisbright = 0;}
 
     leds[realPixelIndex(i)] += color_blend(SEGCOLOR(1), color_from_palette(colorIndex, false, PALETTE_SOLID_WRAP, 0), thisbright);
   }
@@ -5907,8 +5962,10 @@ uint16_t WS2812FX::mode_puddles(void) {                   // Puddles. By Andrew 
 
   fade_out(fadeVal);
 
-  if (sample>0 ) {
-    size = sample * SEGMENT.intensity /256 /8 + 1;        // Determine size of the flash based on the volume.
+  float tmpSound = (soundAgc) ? rawSampleAgc : sample;
+  
+  if (tmpSound>1 ) {
+    size = tmpSound * SEGMENT.intensity /256 /8 + 1;        // Determine size of the flash based on the volume.
     if (pos+size>= SEGLEN) size=SEGLEN-pos;
   }
 
@@ -6259,11 +6316,13 @@ uint16_t WS2812FX::mode_freqwave(void) {                  // Freqwave. By Andrea
     //uint8_t fade = SEGMENT.custom3;
     //uint8_t fadeval;
 
-    double sensitivity = mapf(SEGMENT.custom3, 1, 255, 1, 10);
-    int pixVal = sampleAvg * SEGMENT.intensity / 256 * sensitivity;
+    float tmpSound = (soundAgc) ? sampleAgc : sampleAvg;
+
+    float sensitivity = mapf(SEGMENT.custom3, 1, 255, 1, 10);
+    float pixVal = tmpSound * (float)SEGMENT.intensity / 256.0 * sensitivity;
     if (pixVal > 255) pixVal = 255;
 
-    double intensity = map(pixVal, 0, 255, 0, 100) / 100.0;  // make a brightness from the last avg
+    float intensity = mapf(pixVal, 0, 255, 0, 100) / 100.0;  // make a brightness from the last avg
 
     CRGB color = 0;
     CHSV c;
@@ -6279,7 +6338,7 @@ uint16_t WS2812FX::mode_freqwave(void) {                  // Freqwave. By Andrea
       int upperLimit = 20 * SEGMENT.custom2;
       int lowerLimit = 2 * SEGMENT.custom1;
       int i =  lowerLimit!=upperLimit?map(FFT_MajorPeak, lowerLimit, upperLimit, 0, 255):FFT_MajorPeak;
-      uint16_t b = 255 * intensity;
+      uint16_t b = 255.0 * intensity;
       if (b > 255) b=255;
       c = CHSV(i, 240, (uint8_t)b);
       color = c;                                          // implicit conversion to RGB supplied by FastLED
@@ -6361,7 +6420,7 @@ uint16_t WS2812FX::mode_noisemove(void) {                 // Noisemove.    By: A
     uint16_t locn = inoise16(millis()*SEGMENT.speed+i*50000, millis()*SEGMENT.speed);   // Get a new pixel location from moving noise.
 
     locn = map(locn,7500,58000,0,SEGLEN-1);               // Map that to the length of the strand, and ensure we don't go over.
-    locn = locn % (SEGLEN - 1);                           // Just to be bloody sure.
+    locn = locn % SEGLEN;                                 // Just to be bloody sure.
 
     setPixelColor(locn, color_blend(SEGCOLOR(1), color_from_palette(i*64, false, PALETTE_SOLID_WRAP, 0), fftResult[i % 16]*4));
 
@@ -6382,7 +6441,12 @@ uint16_t WS2812FX::mode_rocktaves(void) {                 // Rocktaves. Same not
   double frTemp = FFT_MajorPeak;
   uint8_t octCount = 0;                                   // Octave counter.
   uint8_t volTemp = 0;
-  if (FFT_Magnitude > 500) volTemp = 255;                 // We need to squelch out the background noise.
+
+  float my_magnitude = FFT_Magnitude / 16.0;             // scale magnitude to be aligned with scaling of FFT bins
+  if (soundAgc) my_magnitude *= multAgc;                 // apply gain
+  if (sampleAvg < 1 ) my_magnitude = 0.001;              // mute
+
+  if (my_magnitude > 32) volTemp = 255;                 // We need to squelch out the background noise.
 
   while ( frTemp > 249 ) {
     octCount++;                                           // This should go up to 5.

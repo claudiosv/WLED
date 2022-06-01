@@ -80,6 +80,7 @@ void userLoop() {
 
   if (!(audioSyncEnabled & (1 << 1))) { // Only run the sampling code IF we're not in Receive mode
     lastTime = millis();
+    if (soundAgc > AGC_NUM_PRESETS) soundAgc = 0; // make sure that AGC preset is valid (to avoid array bounds violation)
     getSample();                        // Sample the microphone
     agcAvg();                           // Calculated the PI adjusted value as sampleAvg
     myVals[millis()%32] = sampleAgc;
@@ -89,29 +90,25 @@ void userLoop() {
     uint8_t knownMode = strip.getMainSegment().mode;
 
     if (lastMode != knownMode) { // only execute if mode changes
-      char lineBuffer[8];
-      /*uint8_t printedChars = */ extractModeName(knownMode, JSON_mode_names, lineBuffer,8); //is this 'the' way to get mode name here?
-
-
-      //no clue why but it looks like 🎚 is encoded in JSON_mode_names as 240, 159, 142, 154. Not found here https://www.iemoji.com/view/emoji/918/objects/level-slider
-      //it is encoded in position 4 to 7
+      char lineBuffer[3];
+      /* uint8_t printedChars = */ extractModeName(knownMode, JSON_mode_names, lineBuffer, 3); //is this 'the' way to get mode name here?
 
       //used the following code to reverse engineer this
-
       // Serial.println(lineBuffer);
-      // for (uint8_t i = 0; i<printedChars; i++) { //🎚 ♪
+      // for (uint8_t i = 0; i<printedChars; i++) {
       //   Serial.print(i);
       //   Serial.print( ": ");
       //   Serial.println(uint8_t(lineBuffer[i]));
       // }
-      agcEffect = (lineBuffer[4] == 240 && lineBuffer[5] == 159 && lineBuffer[6] == 142 && lineBuffer[7] == 154 );
+      agcEffect = (lineBuffer[1] == 226 && lineBuffer[2] == 153); // && (lineBuffer[3] == 170 || lineBuffer[3] == 171 ) encoding of ♪ or ♫
+      // agcEffect = (lineBuffer[4] == 240 && lineBuffer[5] == 159 && lineBuffer[6] == 142 && lineBuffer[7] == 154 ); //encoding of 🎚 No clue why as not found here https://www.iemoji.com/view/emoji/918/objects/level-slider
 
       // if (agcEffect)
-      //   Serial.println("found 🎚");
+      //   Serial.println("found ♪ or ♫");
     }
 
     // update inputLevel Slider based on current AGC gain
-    if (soundAgc && agcEffect) {
+    if ((soundAgc>0) && agcEffect) {
       static unsigned long last_update_time = 0;
       static unsigned long last_kick_time = 0;
       static int last_user_inputLevel = 0;
@@ -126,8 +123,6 @@ void userLoop() {
         if (last_user_inputLevel < inputLevel) multAgc *= 1.50; // up -> increase gain
         last_kick_time = now_time;
       }
-
-      lastMode = knownMode;
 
       int new_user_inputLevel = 128.0 * multAgc;                                       // scale AGC multiplier so that "1" is at 128
       if (multAgc > 1.0) new_user_inputLevel = 128.0 * (((multAgc - 1.0) / 4.0) +1.0); // compress range so we can show values up to 4
@@ -144,6 +139,7 @@ void userLoop() {
         last_user_inputLevel = new_user_inputLevel;
       }
     }
+    lastMode = knownMode;
 
 #if defined(MIC_LOGGER) || defined(MIC_SAMPLING_LOG) || defined(FFT_SAMPLING_LOG)
     EVERY_N_MILLIS(2000) {
@@ -177,6 +173,7 @@ void userLoop() {
             myVals[i] = receivedPacket.myVals[i];
           }
           sampleAgc = receivedPacket.sampleAgc;
+          rawSampleAgc = receivedPacket.sampleAgc;
           sample = receivedPacket.sample;
           sampleAvg = receivedPacket.sampleAvg;
           // VERIFY THAT THIS IS A COMPATIBLE PACKET
@@ -188,6 +185,7 @@ void userLoop() {
               myVals[i] = receivedPacket.myVals[i];
             }
             sampleAgc = receivedPacket.sampleAgc;
+            rawSampleAgc = receivedPacket.sampleAgc;
             sample = receivedPacket.sample;
             sampleAvg = receivedPacket.sampleAvg;
 
