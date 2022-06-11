@@ -1,5 +1,6 @@
 #include "wled.h"
 #include "audio_reactive.h"
+#include <M5StickC.h>
 /*
  * This v1 usermod file allows you to add own functionality to WLED more easily
  * See: https://github.com/Aircoookie/WLED/wiki/Add-own-functionality
@@ -16,6 +17,8 @@
 
 // This gets called once at boot. Do all initialization that doesn't depend on network here
 void userSetup() {
+  M5.begin(false,true,false);
+  // M5.Lcd.setBrightness(0);
   // Reset I2S peripheral for good measure
   i2s_driver_uninstall(I2S_NUM_0);
   periph_module_reset(PERIPH_I2S0_MODULE);
@@ -112,12 +115,12 @@ void userLoop() {
       static unsigned long last_update_time = 0;
       static unsigned long last_kick_time = 0;
       static int last_user_inputLevel = 0;
-      unsigned long now_time = millis();    
+      unsigned long now_time = millis();
 
       // "user kick" feature - if user has moved the slider by at least 32 units, we "kick" AGC gain by 30% (up or down)
       // only once in 3.5 seconds
       if (   (lastMode == knownMode)
-          && (abs(last_user_inputLevel - inputLevel) > 31) 
+          && (abs(last_user_inputLevel - inputLevel) > 31)
           && (now_time - last_kick_time > 3500)) {
         if (last_user_inputLevel > inputLevel) multAgc *= 0.60; // down -> reduce gain
         if (last_user_inputLevel < inputLevel) multAgc *= 1.50; // up -> increase gain
@@ -129,7 +132,7 @@ void userLoop() {
       new_user_inputLevel = MIN(MAX(new_user_inputLevel, 0),255);
 
 	    // update user interfaces - restrict frequency to avoid flooding UI's with small changes
-      if ( ( ((now_time - last_update_time > 3500) && (abs(new_user_inputLevel - inputLevel) > 2))     // small change - every 3.5 sec (max) 
+      if ( ( ((now_time - last_update_time > 3500) && (abs(new_user_inputLevel - inputLevel) > 2))     // small change - every 3.5 sec (max)
            ||((now_time - last_update_time > 2200) && (abs(new_user_inputLevel - inputLevel) > 15))    // medium change
            ||((now_time - last_update_time > 1200) && (abs(new_user_inputLevel - inputLevel) > 31)) )) // BIG change - every second
       {

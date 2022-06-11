@@ -42,18 +42,6 @@ static AudioSource *audioSource;
 
 //#define MAJORPEAK_SUPPRESS_NOISE      // define to activate a dirty hack that ignores the lowest + hightest FFT bins
 
-#define AGC_PRESET_normal             // AGC default settings
-//#define AGC_PRESET_vivid              // AGC setting that are more "vivid" i.e. respond to changes more quickly
-// could add UI option for AGC presets later
-
-#ifdef AGC_PRESET_vivid
-#undef AGC_PRESET_normal              // user can override with "-D AGC_PRESET_vivid"
-#endif
-
-#if (defined(AGC_PRESET_normal) && defined(AGC_PRESET_vivid)) || (!defined(AGC_PRESET_normal) && !defined(AGC_PRESET_vivid))
-#error please define either  AGC_PRESET_normal  OR  AGC_PRESET_vivid
-#endif
-
 constexpr i2s_port_t I2S_PORT = I2S_NUM_0;
 constexpr int BLOCK_SIZE = 128;
 constexpr int SAMPLE_RATE = 10240;      // Base sample rate in Hz
@@ -61,7 +49,7 @@ constexpr int SAMPLE_RATE = 10240;      // Base sample rate in Hz
 //Use userVar0 and userVar1 (API calls &U0=,&U1=, uint16_t)
 
 #if !defined(LED_BUILTIN) && !defined(BUILTIN_LED) // Set LED_BUILTIN if it is not defined by Arduino framework
-  #define LED_BUILTIN 10
+  #define LED_BUILTIN 3
 #endif
 
 #define UDP_SYNC_HEADER "00001"
@@ -70,10 +58,10 @@ uint8_t maxVol = 10;                            // Reasonable value for constant
 uint8_t binNum = 8;                             // Used to select the bin for FFT based beat detection.
 
 
-//
+// 
 // AGC presets
 //  Note: in C++, "const" implies "static" - no need to explicitly declare everything as "static const"
-//
+// 
 #define AGC_NUM_PRESETS   3       // AGC currently has 3 presets: normal, vivid, lazy
 
               // Normal, Vivid,    Lazy
@@ -106,9 +94,9 @@ const double agcControlKi[AGC_NUM_PRESETS] =      // AGC - PI control, integral 
 
 const float agcSampleSmooth[AGC_NUM_PRESETS] =   // smoothing factor for sampleAgc (use rawSampleAgc if you want the non-smoothed value)
               {  1.0/12.0,    1.0/6.0,   1.0/16.0};
-//
+// 
 // AGC presets end
-//
+// 
 
 double sampleMax = 0;                           // Max sample over a few seconds. Needed for AGC controler.
 
@@ -281,7 +269,7 @@ void getSample() {
 
 /*
  * A "PI control" multiplier to automatically adjust sound sensitivity.
- *
+ * 
  * A few tricks are implemented so that sampleAgc does't only utilize 0% and 100%:
  * 0. don't amplify anything below squelch (but keep previous gain)
  * 1. gain input = maximum signal observed in the last 5-10 seconds
@@ -331,14 +319,14 @@ void agcAvg() {
 
     // compute error terms
     control_error = multAgcTemp - lastMultAgc;
-
+    
     if (((multAgcTemp > 0.085) && (multAgcTemp < 6.5))        //integrator anti-windup by clamping
         && (multAgc*sampleMax < agcZoneStop[AGC_preset]))     //integrator ceiling (>140% of max)
       control_integrated += control_error * 0.002 * 0.25;     // 2ms = intgration time; 0.25 for damping
     else
       control_integrated *= 0.9;                              // spin down that beasty integrator
 
-    // apply PI Control
+    // apply PI Control 
     tmpAgc = sampleReal * lastMultAgc;              // check "zone" of the signal using previous gain
     if ((tmpAgc > agcZoneHigh[AGC_preset]) || (tmpAgc < soundSquelch + agcZoneLow[AGC_preset])) {                  // upper/lower emergy zone
       multAgcTemp = lastMultAgc + agcFollowFast[AGC_preset] * agcControlKp[AGC_preset] * control_error;
@@ -363,7 +351,7 @@ void agcAvg() {
   multAgc = multAgcTemp;
   rawSampleAgc = 0.8 * tmpAgc + 0.2 * (float)rawSampleAgc;
   // update smoothed AGC sample
-  if(fabs(tmpAgc) < 1.0)
+  if(fabs(tmpAgc) < 1.0) 
     sampleAgc =  0.5 * tmpAgc + 0.5 * sampleAgc;      // fast path to zero
   else
     sampleAgc = sampleAgc + agcSampleSmooth[AGC_preset] * (tmpAgc - sampleAgc); // smooth path
@@ -613,8 +601,8 @@ void FFTcode( void * parameter) {
         fftAvg[i] = (float)fftResult[i]*.05 + (1-.05)*fftAvg[i];
     }
 
-// release second sample to volume reactive effects.
-	// The FFT process currently takes ~20ms, so releasing a second sample now effectively doubles the "sample rate"
+// release second sample to volume reactive effects. 
+	// The FFT process currently takes ~20ms, so releasing a second sample now effectively doubles the "sample rate" 
     micDataSm = (uint16_t)maxSample2;
     micDataReal = maxSample2;
 
