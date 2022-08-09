@@ -3,12 +3,16 @@
 /*
    Main sketch, global variable declarations
    @title WLED project sketch
-   @version 0.13.1
+   @version 0.13.2-a0
    @author Christian Schwinne
  */
 
 // version code in format yymmddb (b = daily build)
-#define VERSION 2205260
+#define VERSION 2208081             // WLEDSR specific version
+#define SR_VERSION_NAME "0.13.2.1-dev" // WLEDSR version name --> some files need manual updating: package.json, package-lock.json, improv.cpp
+
+#define AC_VERSION 2207021             // AC WLED base version; last updated by PR #217 Merge AC-main into SR-dev
+#define AC_VERSION_NAME "0.13.2-a0"    // AC WLED base version name; last change 02.July 2022
 
 //uncomment this if you have a "my_config.h" file you'd like to use
 //#define WLED_USE_MY_CONFIG
@@ -116,7 +120,11 @@
 #endif
 
 #ifdef WLED_ENABLE_DMX
+ #ifdef ESP8266
   #include "src/dependencies/dmx/ESPDMX.h"
+ #else //ESP32
+  #include "src/dependencies/dmx/SparkFunDMX.h"
+ #endif
 #endif
 
 #include "src/dependencies/e131/ESPAsyncE131.h"
@@ -328,7 +336,7 @@ WLED_GLOBAL byte briS     _INIT(128);                     // default brightness
 //WLEDSR
 WLED_GLOBAL byte inputLevelS    _INIT(128);         // WLEDSR default inputLevel
 WLED_GLOBAL byte soundSquelch   _INIT(10);          // default squelch value for volume reactive routines
-WLED_GLOBAL byte sampleGain     _INIT(1);           // default sample gain
+WLED_GLOBAL byte sampleGain     _INIT(40);           // default sample gain
 WLED_GLOBAL byte soundAgc       _INIT(0);           // default Automagic gain control
 WLED_GLOBAL uint16_t noiseFloor _INIT(100);         // default squelch value for FFT reactive routines
 
@@ -395,7 +403,11 @@ WLED_GLOBAL bool arlsDisableGammaCorrection _INIT(true);          // activate if
 WLED_GLOBAL bool arlsForceMaxBri _INIT(false);                    // enable to force max brightness if source has very dark colors that would be black
 
 #ifdef WLED_ENABLE_DMX
-WLED_GLOBAL DMXESPSerial dmx;
+ #ifdef ESP8266
+  WLED_GLOBAL DMXESPSerial dmx;
+ #else //ESP32
+  WLED_GLOBAL SparkFunDMX dmx;
+ #endif
 WLED_GLOBAL uint16_t e131ProxyUniverse _INIT(0);                  // output this E1.31 (sACN) / ArtNet universe via MAX485 (0 = disabled)
 #endif
 WLED_GLOBAL uint16_t e131Universe _INIT(1);                       // settings for E1.31 (sACN) protocol (only DMX_MODE_MULTIPLE_* can span over consequtive universes)
@@ -595,6 +607,7 @@ WLED_GLOBAL IPAddress realtimeIP _INIT_N(((0, 0, 0, 0)));
 WLED_GLOBAL unsigned long realtimeTimeout _INIT(0);
 WLED_GLOBAL uint8_t tpmPacketCount _INIT(0);
 WLED_GLOBAL uint16_t tpmPayloadFrameSize _INIT(0);
+WLED_GLOBAL bool useMainSegmentOnly _INIT(false);
 
 // mqtt
 WLED_GLOBAL unsigned long lastMqttReconnectAttempt _INIT(0);

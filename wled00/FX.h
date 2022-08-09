@@ -46,6 +46,11 @@
 #define MAX(a,b) ((a)>(b)?(a):(b))
 #endif
 
+//color mangling macros
+#ifndef RGBW32
+#define RGBW32(r,g,b,w) (uint32_t((byte(w) << 24) | (byte(r) << 16) | (byte(g) << 8) | (byte(b))))
+#endif
+
 /* Not used in all effects yet */
 #define WLED_FPS         42
 #define FRAMETIME_FIXED  (1000/WLED_FPS)
@@ -71,7 +76,6 @@
   assuming each segment uses the same amount of data. 256 for ESP8266, 640 for ESP32. */
 #define FAIR_DATA_PER_SEG (MAX_SEGMENT_DATA / MAX_NUM_SEGMENTS)
 
-#define LED_SKIP_AMOUNT  1
 // NEED WORKAROUND TO ACCESS PRIVATE CLASS VARIABLE '_frametime'
 #define MIN_SHOW_DELAY   (_frametime < 16 ? 8 : 15)
 
@@ -116,7 +120,7 @@
 #define IS_REVERSE      ((SEGMENT.options & REVERSE     ) == REVERSE     )
 #define IS_SELECTED     ((SEGMENT.options & SELECTED    ) == SELECTED    )
 
-#define MODE_COUNT 188// WLEDSR: First 128 for AC (incl reserved), rest for SR
+#define MODE_COUNT 190// WLEDSR: First 128 for AC (incl reserved), rest for SR
 
 #define FX_MODE_STATIC                   0
 #define FX_MODE_BLINK                    1
@@ -314,6 +318,8 @@
 #define FX_MODE_ROCKTAVES              185
 #define FX_MODE_2DAKEMI                186
 #define FX_MODE_CUSTOMEFFECT           187 //WLEDSR Custom Effects
+#define FX_MODE_3DRIPPLES              188
+#define FX_MODE_3DSphereMove        189
 
 #define floatNull -32768 //WLEDSR Custom Effects
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -332,7 +338,7 @@ class WS2812FX {
   public:
 
     // FastLED array, so we can refer to leds[i] instead of getPixel() and setPixel()
-    CRGB leds[MAX_LEDS+1];                          // See const.h for a value of 1500. The plus 1 is just in case we go over with XY().
+    CRGB leds[MAX_LEDS+1];                      // See const.h for a value of 1500. The plus 1 is just in case we go over with XY().
 
     typedef struct Segment { // 31 (32 in memory) bytes
       uint16_t start;
@@ -432,7 +438,6 @@ class WS2812FX {
           vLength = (vLength + 1) /2;  // divide by 2 if mirror, leave at least a single LED
         return vLength;
       }
-
       uint8_t differs(Segment& b);
       inline uint8_t getLightCapabilities() {return _capabilities;}
       void refreshLightCapabilities();
@@ -786,6 +791,8 @@ class WS2812FX {
       _mode[FX_MODE_ROCKTAVES]               = &WS2812FX::mode_rocktaves;
       _mode[FX_MODE_2DAKEMI]                 = &WS2812FX::mode_2DAkemi;
       _mode[FX_MODE_CUSTOMEFFECT]            = &WS2812FX::mode_customEffect; //WLEDSR Custom Effects
+      _mode[FX_MODE_3DRIPPLES]               = &WS2812FX::mode_3DRipples;
+      _mode[FX_MODE_3DSphereMove]         = &WS2812FX::mode_3DSphereMove;
 
 #ifdef WLEDSR_LARGE
     // _mode[FX_MODE_2DPOOLNOISE]              = &WS2812FX::mode_2DPoolnoise; //code not in fx.cpp
@@ -804,7 +811,7 @@ class WS2812FX {
       _brightness = DEFAULT_BRIGHTNESS;
       currentPalette = CRGBPalette16(CRGB::Black);
       targetPalette = CloudColors_p;
-      ablMilliampsMax = 850;
+      ablMilliampsMax = ABL_MILLIAMPS_DEFAULT;
       currentMilliamps = 0;
       timebase = 0;
       resetSegments();
@@ -834,11 +841,12 @@ class WS2812FX {
       resetSegments(),
       makeAutoSegments(bool forceReset = false),
       fixInvalidSegments(),
-      setPixelColor(uint16_t n, uint32_t c),
       setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b, uint8_t w = 0),
       show(void),
 			setTargetFps(uint8_t fps),
       deserializeMap(uint8_t n=0);
+
+    inline void setPixelColor(uint16_t n, uint32_t c) {setPixelColor(n, byte(c>>16), byte(c>>8), byte(c), byte(c>>24));}
 
     bool
       gammaCorrectBri = false,
@@ -1130,7 +1138,9 @@ class WS2812FX {
       mode_2DDrift(void),
       mode_2DColoredBursts(void),
       mode_2DJulia(void),
-      mode_customEffect(void);     //WLEDSR Custom Effects
+      mode_customEffect(void),     //WLEDSR Custom Effects
+      mode_3DRipples(void),
+      mode_3DSphereMove(void);
     //  mode_2DPoolnoise(void),
     //  mode_2DTwister(void);
     //  mode_2DCAElementary(void);
@@ -1237,9 +1247,8 @@ class WS2812FX {
     friend class ColorTransition;
 
     uint16_t
-      realPixelIndex(uint16_t i),
+      segmentToLogical(uint16_t i),
       transitionProgress(uint8_t tNr);
-
   public:
     inline bool hasWhiteChannel(void) {return _hasWhiteChannel;}
     inline bool isOffRefreshRequired(void) {return _isOffRefreshRequired;}
@@ -1250,7 +1259,7 @@ class WS2812FX {
 // Technical notes
 // ===============
 // If an effect name is followed by an @, slider and color control is effective.
-// See setSliderAndColorControl in index.js for implementation
+// See setEffectParameters in index.js for implementation
 // If not effective then:
 //      - For AC effects (id<128) 2 sliders and 3 colors and the palette will be shown
 //      - For SR effects (id>128) 5 sliders and 3 colors and the palette will be shown
@@ -1459,7 +1468,9 @@ const char JSON_mode_names[] PROGMEM = R"=====([
 "Wavesins@Speed,Brightness variation,Starting Color,Range of Colors,Color variation;;!",
 " ♫ Rocktaves@;,!;!",
 " ♫ 2D Akemi@Color speed,Dance ☑;Head palette,Arms & Legs,Eyes & Mouth;Face palette",
-" ⚙️ Custom Effect@Speed,Intensity,Custom 1, Custom 2, Custom 3;!;!"
+" ⚙️ Custom Effect@Speed,Intensity,Custom 1, Custom 2, Custom 3;!;!",
+"3D Ripples@Speed=128,Interval=128;!;!",
+"3D Sphere Move@Speed=128,Interval=128;!;!"
 ])=====";
 
 //WLEDSR: second part (not SR specific, but in latest SR, not in AC (Pallettes added in WLEDSR from Retro Clown->END))
